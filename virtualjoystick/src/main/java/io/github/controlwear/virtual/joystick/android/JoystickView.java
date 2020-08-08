@@ -152,10 +152,10 @@ public class JoystickView extends View
 
 
     /**
-     * Used to adapt behavior whether the button is automatically re-centered (true)
+     * Used to adapt behavior whether the button is automatically re-centered in x- and y-axes (true)
      * when released or not (false)
      */
-    private boolean mAutoReCenterButton;
+    private boolean mAutoReCenterButtonX, mAutoReCenterButtonY;
 
 
     /**
@@ -209,9 +209,9 @@ public class JoystickView extends View
 
     /**
      * The allowed direction of the button is define by the value of this parameter:
-     * - a negative value for horizontal axe
-     * - a positive value for vertical axe
-     * - zero for both axes
+     * - 1 for horizontal axis only
+     * - 2 for vertical axis only
+     * - 0 for both axes
      */
     private int mButtonDirection = 0;
 
@@ -266,7 +266,8 @@ public class JoystickView extends View
             backgroundColor = styledAttributes.getColor(R.styleable.JoystickView_JV_backgroundColor, DEFAULT_BACKGROUND_COLOR);
             borderWidth = styledAttributes.getDimensionPixelSize(R.styleable.JoystickView_JV_borderWidth, DEFAULT_WIDTH_BORDER);
             mFixedCenter = styledAttributes.getBoolean(R.styleable.JoystickView_JV_fixedCenter, DEFAULT_FIXED_CENTER);
-            mAutoReCenterButton = styledAttributes.getBoolean(R.styleable.JoystickView_JV_autoReCenterButton, DEFAULT_AUTO_RECENTER_BUTTON);
+            mAutoReCenterButtonX = styledAttributes.getBoolean(R.styleable.JoystickView_JV_autoReCenterButtonX, DEFAULT_AUTO_RECENTER_BUTTON);
+            mAutoReCenterButtonY = styledAttributes.getBoolean(R.styleable.JoystickView_JV_autoReCenterButtonY, DEFAULT_AUTO_RECENTER_BUTTON);
             buttonDrawable = styledAttributes.getDrawable(R.styleable.JoystickView_JV_buttonImage);
             mEnabled = styledAttributes.getBoolean(R.styleable.JoystickView_JV_enabled, true);
             mButtonSizeRatio = styledAttributes.getFraction(R.styleable.JoystickView_JV_buttonSizeRatio, 1, 1, 0.25f);
@@ -427,9 +428,9 @@ public class JoystickView extends View
 
 
         // to move the button according to the finger coordinate
-        // (or limited to one axe according to direction option
-        mPosY = mButtonDirection < 0 ? mCenterY : (int) event.getY(); // direction negative is horizontal axe
-        mPosX = mButtonDirection > 0 ? mCenterX : (int) event.getX(); // direction positive is vertical axe
+        // (or limited to one axe according to direction option)
+        mPosY = mButtonDirection == 1 ? mCenterY : (int) event.getY();
+        mPosX = mButtonDirection == 2 ? mCenterX : (int) event.getX();
 
         if (event.getAction() == MotionEvent.ACTION_UP) {
 
@@ -437,16 +438,15 @@ public class JoystickView extends View
             mThread.interrupt();
 
             // re-center the button or not (depending on settings)
-            if (mAutoReCenterButton) {
-                resetButtonPosition();
-
-                // update now the last strength and angle which should be zero after resetButton
-                if (mCallback != null)
-                    mCallback.onMove(getDelX(), getDelY());
-            }
+            maybeResetButtonPosition();
 
             // if mAutoReCenterButton is false we will send the last strength and angle a bit
             // later only after processing new position X and Y otherwise it could be above the border limit
+            // if the user lifts their finger outside the border
+            if (mAutoReCenterButtonX && mAutoReCenterButtonY) {
+                if (mCallback != null)
+                    mCallback.onMove(getDelX(), getDelY());
+            }
         }
 
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
@@ -513,8 +513,8 @@ public class JoystickView extends View
             mPosY = mCenterY - mBorderHeight/2;
         }
 
-        if (!mAutoReCenterButton) {
-            // Now update the last strength and angle if not reset to center
+        if (mAutoReCenterButtonX == false || mAutoReCenterButtonY == false) {
+            // Now update the position if not reset to center
             if (mCallback != null)
                 mCallback.onMove(getDelX(), getDelY());
         }
@@ -531,17 +531,6 @@ public class JoystickView extends View
     GETTERS
      */
 
-
-    /**
-     * Process the angle following the 360° counter-clock protractor rules.
-     * @return the angle of the button
-     */
-    private int getAngle() {
-        int angle = (int) Math.toDegrees(Math.atan2(mCenterY - mPosY, mPosX - mCenterX));
-        return angle < 0 ? angle + 360 : angle; // make it as a regular counter-clock protractor
-    }
-
-
     private int getDelX() {
         return (int) (100 * (mPosX-mCenterX)/(mBorderWidth/2.0));
     }
@@ -552,20 +541,22 @@ public class JoystickView extends View
 
 
     /**
-     * Reset the button position to the center.
+     * Reset the button position to the center if requested.
      */
-    public void resetButtonPosition() {
-        mPosX = mCenterX;
-        mPosY = mCenterY;
+    public void maybeResetButtonPosition() {
+        if (mAutoReCenterButtonX)
+            mPosX = mCenterX;
+        if (mAutoReCenterButtonY)
+            mPosY = mCenterY;
     }
 
 
     /**
      * Return the current direction allowed for the button to move
      * @return Actually return an integer corresponding to the direction:
-     * - A negative value is horizontal axe,
-     * - A positive value is vertical axe,
-     * - Zero means both axes
+     * - 1 means horizontal axis only,
+     * - 2 means vertical axis only,
+     * - 0 means both axes
      */
     public int getButtonDirection() {
         return mButtonDirection;
@@ -605,8 +596,16 @@ public class JoystickView extends View
      * Return the current behavior of the auto re-center button
      * @return True if automatically re-centered or False if not
      */
-    public boolean isAutoReCenterButton() {
-        return mAutoReCenterButton;
+    public boolean isAutoReCenterButtonX() {
+        return mAutoReCenterButtonX;
+    }
+
+    /**
+     * Return the current behavior of the auto re-center button
+     * @return True if automatically re-centered or False if not
+     */
+    public boolean isAutoReCenterButtonY() {
+        return mAutoReCenterButtonY;
     }
 
 
@@ -813,17 +812,21 @@ public class JoystickView extends View
      * Set the current behavior of the auto re-center button
      * @param b True if automatically re-centered or False if not
      */
-    public void setAutoReCenterButton(boolean b) {
-        mAutoReCenterButton = b;
+    public void setAutoReCenterButtonX(boolean b) {
+        mAutoReCenterButtonX = b;
+    }
+
+    /**
+     * Set the current behavior of the auto re-center button
+     * @param b True if automatically re-centered or False if not
+     */
+    public void setAutoReCenterButtonY(boolean b) {
+        mAutoReCenterButtonY = b;
     }
 
 
     /**
-     * Set the current authorized direction for the button to move
-     * @param direction the value will define the authorized direction:
-     *                  - any negative value (such as -1) for horizontal axe
-     *                  - any positive value (such as 1) for vertical axe
-     *                  - zero (0) for the full direction (both axes)
+     * Set the current allowed direction for the button to move
      */
     public void setButtonDirection(int direction) {
         mButtonDirection = direction;
