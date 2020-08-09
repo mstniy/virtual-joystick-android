@@ -164,6 +164,11 @@ public class JoystickView extends View
      */
     private boolean mEnabled;
 
+    /**
+     * Whether the callback will be called even if the user is not touching the joystick
+     */
+    private boolean mAlwaysCall;
+
 
     // SIZE
     private int mButtonRadius;
@@ -188,7 +193,7 @@ public class JoystickView extends View
     private OnMoveListener mCallback;
 
     private long mLoopInterval = DEFAULT_LOOP_INTERVAL;
-    private Thread mThread = new Thread(this);
+    private Thread mThread;
 
 
     /**
@@ -434,8 +439,10 @@ public class JoystickView extends View
 
         if (event.getAction() == MotionEvent.ACTION_UP) {
 
-            // stop listener because the finger left the touch screen
-            mThread.interrupt();
+            if (mAlwaysCall == false && mThread != null) {
+                // stop listener because the finger left the touch screen
+                mThread.interrupt();
+            }
 
             // re-center the button or not (depending on settings)
             maybeResetButtonPosition();
@@ -450,15 +457,15 @@ public class JoystickView extends View
         }
 
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
-            if (mThread != null && mThread.isAlive()) {
-                mThread.interrupt();
-            }
-
-            mThread = new Thread(this);
-            mThread.start();
-
-            if (mCallback != null)
+            if (mCallback != null) {
+                if (mAlwaysCall == false) {
+                    if (mThread == null || mThread.isAlive() == false || mThread.isInterrupted()) {
+                        mThread = new Thread(this);
+                        mThread.start();
+                    }
+                }
                 mCallback.onMove(getDelX(), getDelY());
+            }
         }
 
         // handle first touch and long press with multiple touch only
@@ -745,9 +752,26 @@ public class JoystickView extends View
      * @param l The callback that will run
      * @param loopInterval Refresh rate to be invoked in milliseconds
      */
-    public void setOnMoveListener(OnMoveListener l, int loopInterval) {
+    public void setOnMoveListener(OnMoveListener l, int loopInterval) { setOnMoveListener(l, loopInterval, true); }
+
+    /**
+     * Register a callback to be invoked when this JoystickView's button is moved
+     * @param l The callback that will run
+     * @param loopInterval Refresh rate to be invoked in milliseconds
+     * @param alwaysCall Whether the callback will be called even if the user is not touching the joystick
+     */
+    public void setOnMoveListener(OnMoveListener l, int loopInterval, boolean alwaysCall) {
         mCallback = l;
         mLoopInterval = loopInterval;
+        mAlwaysCall = alwaysCall;
+
+        if (mAlwaysCall && mCallback != null) {
+            if (mThread != null)
+                mThread.interrupt();
+
+            mThread = new Thread(this);
+            mThread.start();
+        }
     }
 
 
